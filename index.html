@@ -148,6 +148,30 @@ footer{border-top:1px solid var(--line); padding:24px 0 0; color:var(--ink-soft)
 }
 @media (prefers-reduced-motion: reduce){*{scroll-behavior:auto!important}}
 html{scroll-behavior:smooth}
+.pdf-btn{
+  display:inline-flex; align-items:center; gap:6px; margin-top:16px;
+  font-family:"IBM Plex Sans KR",sans-serif; font-size:13px; font-weight:600;
+  border:1px solid var(--ink); background:var(--surface); color:var(--ink);
+  border-radius:8px; padding:8px 16px; cursor:pointer;
+}
+.pdf-btn:hover{border-color:var(--accent); color:var(--accent)}
+.pdf-btn:focus-visible{outline:2px solid var(--accent)}
+/* ── 인쇄(PDF 저장) ── */
+@media print{
+  nav, .pdf-btn, .pre-copy, .copyblock .cb-label button, .quiz, .dl-btn{display:none!important}
+  .wrap{display:block}
+  main{width:100%}
+  .content{max-width:none; padding:0}
+  body{font-size:11.5px; background:#fff}
+  header.hero{padding:0 0 16px; margin-bottom:20px}
+  section{margin-bottom:28px}
+  section, .lab{break-inside:auto}
+  table, pre, figure.spectrum, .note, .warn, .ok, .copyblock{break-inside:avoid}
+  .lab{border-left-width:3px; padding:14px 18px}
+  a{color:inherit; text-decoration:none}
+  code.copyable::after{content:""}
+  .check.check-live li{cursor:auto}
+}
 </style>
 
 <div class="wrap">
@@ -183,6 +207,7 @@ html{scroll-behavior:smooth}
   <h1>MBC Gemini Enterprise 교육</h1>
   <p>전 직원이 Gemini Enterprise로 자기 업무의 반복 작업 1개 이상을 자동화하는 것을 목표로 합니다.
   각 장의 이론 뒤에 관련 실습이 바로 이어집니다 — 배운 내용을 그 자리에서 직접 해봅니다.</p>
+  <button type="button" class="pdf-btn" onclick="window.print()">📄 PDF로 저장</button>
 </header>
 
 <!-- ══════════ 1부 ══════════ -->
