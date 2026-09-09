@@ -1,0 +1,9 @@
+# 배포 제외 — 내부 자료
+meet_2.md
+*.pptx
+_pptx_extract.txt
+01_교육교재_Gemini_Enterprise_기본.md
+02_실습가이드_Gemini_Enterprise.md
+gemini_enterprise_전체기능_실습_초안.md
+*.png
+Thumbs.db
