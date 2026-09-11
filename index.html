@@ -1074,176 +1074,160 @@ subtitle_agent = Agent(
 <div class="lab" id="lab8">
   <div class="lab-head"><h3>실습 5 · 워크플로 에이전트 — 경쟁사 보도 모니터링 자동화</h3>
     <div class="lab-tags"><span class="tag time">60분</span><span class="tag link">이론 7.2장</span><span class="tag">난이도 ★★★</span></div></div>
-  <p class="goal">목표: 트리거 → 실행 → 사람 확인(HITL)으로 이어지는 <strong>워크플로 에이전트</strong>를 완성합니다.
-  대화형 에이전트(실습 4)가 "물으면 답하는" 것이었다면, 이번에는 <strong>정해진 시간에 스스로 실행되는 자동화</strong>를 만듭니다.
-  차이가 하나 더 있습니다 — 출력을 <strong>JSON 스키마</strong>로 고정해, 매일 <strong>같은 형식의 데이터</strong>가 나오도록 강제합니다.</p>
+  <p class="goal">목표: <strong>노드 5개짜리 작은 워크플로 하나</strong>를 만들면서, Workflow Builder의 핵심 기능을 한 번씩 다 만져봅니다 —
+  트리거 입력 필드 · 구조화된 출력 · 조건 분기 · 변수 칩 · 도구 on/off · HITL · 버전 · 테스트 탭.
+  대화형 에이전트(실습 4)가 "물으면 답하는" 것이었다면, 이번에는 <strong>질문의 성격에 따라 스스로 경로를 고르는 자동화</strong>를 만듭니다.</p>
 
-  <p><strong>시나리오</strong>: 매일 아침 보도국 회의 전, 타사 뉴스·보도자료를 수집해
-  <strong>매체 · 주제 · 논조 · 대응 필요도</strong>로 구조화한 모니터링 리포트를 자동 생성합니다.
-  사람이 읽는 표 하나로 끝내지 않고 <strong>기계가 읽을 수 있는 형태</strong>로 뽑아야, 나중에 시트 축적·추이 분석·타 시스템 연동으로 확장됩니다.</p>
+  <p><strong>시나리오</strong>: 모니터링 키워드를 넣으면 타사 보도를 훑어 <strong>긴급(URGENT)</strong>과 <strong>일상(ROUTINE)</strong>으로 갈라,
+  긴급 건만 사람 승인을 거쳐 보도국에 공유하고 일상 건은 조용히 로그로 남깁니다.</p>
 
-  <h4>5-1. Meta Prompting으로 에이전트 프롬프트 생성 (10분)</h4>
-  <p>워크플로 지시문을 직접 쓰지 않고, AI에게 설계를 맡깁니다 (5장 Meta Prompting의 실전 적용).</p>
-  <div class="copyblock"><div class="cb-label"><span>PROMPT · META PROMPTING</span><button data-copy>복사</button></div>
-  <pre><code>경쟁 방송사·언론사의 최근 24시간 보도와 보도자료를 수집해
-분석 리포트를 만드는 Gemini Enterprise 워크플로 에이전트의
-지시문을 작성해줘.
-포함할 것: 매체명·기사 제목·링크·보도 시각 추출, 주제 분류
-(보도·시사 / 편성·콘텐츠 / 경영·인사 / 기술·플랫폼 / 기타),
-우리 회사 관점의 논조(긍정·중립·부정) 판정, 2문장 이내 한국어 요약,
-대응 필요도(높음·보통·낮음)와 권고 조치, 상단에 총 건수와
-대응 필요도별 건수 표시.
-출력은 반드시 아래 JSON 스키마를 그대로 따를 것 —
-스키마 밖의 필드나 설명 문장은 절대 추가하지 말 것.</code></pre></div>
-  <p>생성된 프롬프트를 검토합니다 — 역할(Role)과 출력 기대(Output Expectations)가 갖춰졌는지 확인하고, 마음에 안 드는 부분은 후속 지시로 다듬습니다.</p>
-
-  <h4>5-2. 출력 스키마 정의 — 형식을 고정하기 (12분)</h4>
-  <p>"표로 예쁘게 써줘"는 매번 결과가 흔들립니다. <strong>JSON 스키마</strong>로 필드·타입·허용값(enum)·필수 항목을 못 박으면
-  모델이 그 틀 안에서만 답하게 되어, <strong>매일 실행해도 같은 구조</strong>가 보장됩니다. 아래 스키마를 5-1 프롬프트 끝에 붙여 넣습니다.</p>
-  <div class="copyblock"><div class="cb-label"><span>OUTPUT SCHEMA · JSON</span><button data-copy>복사</button></div>
-  <pre><code>{
-  "type": "object",
-  "required": ["collected_at", "total_count", "by_response_level", "items"],
-  "properties": {
-    "collected_at": { "type": "string", "description": "수집 기준 일시 (YYYY-MM-DD HH:mm)" },
-    "total_count": { "type": "integer", "description": "수집된 총 보도 건수" },
-    "by_response_level": {
-      "type": "object",
-      "required": ["높음", "보통", "낮음"],
-      "properties": {
-        "높음": { "type": "integer" },
-        "보통": { "type": "integer" },
-        "낮음": { "type": "integer" }
-      }
-    },
-    "items": {
-      "type": "array",
-      "items": {
-        "type": "object",
-        "required": ["outlet", "title", "url", "topic", "stance", "summary", "response_level", "suggested_action"],
-        "properties": {
-          "outlet":           { "type": "string", "description": "매체명" },
-          "title":            { "type": "string" },
-          "url":              { "type": "string" },
-          "published_at":     { "type": "string", "description": "보도 시각 (YYYY-MM-DD HH:mm)" },
-          "topic":            { "type": "string", "enum": ["보도·시사", "편성·콘텐츠", "경영·인사", "기술·플랫폼", "기타"] },
-          "stance":           { "type": "string", "enum": ["긍정", "중립", "부정"] },
-          "summary":          { "type": "string", "description": "2문장 이내 한국어 요약" },
-          "response_level":   { "type": "string", "enum": ["높음", "보통", "낮음"] },
-          "suggested_action": { "type": "string", "description": "권고 조치 (없으면 '조치 불필요')" }
-        }
-      }
-    }
-  }
-}</code></pre></div>
-  <p><strong>스키마를 읽는 법</strong>: <code>required</code>는 "비워두면 안 되는 칸", <code>enum</code>은 "이 중에서만 고르라"는 뜻입니다.
-  <code>stance</code>에 enum이 없으면 어떤 날은 "다소 비판적", 어떤 날은 "부정적"으로 나와 집계가 불가능해집니다 — enum이 그 흔들림을 막습니다.
-  마지막에 <strong>사람이 읽을 마크다운 표</strong>는 이 JSON을 변환해서 만들도록 별도 단계로 지시합니다.</p>
-
-  <p><strong>스키마를 어디에 입력하나</strong> — 워크플로의 <strong>각 노드 설정 → 더보기 → 출력</strong> 항목에서
-  기본값 대신 <strong>구조화된 출력</strong>을 선택하면, 그 노드가 내보낼 필드를 직접 지정할 수 있습니다.
-  옆의 <strong>연필(편집) 아이콘</strong>을 눌러 필드를 하나씩 추가하고 이름·타입·설명을 채웁니다
-  (모델 선택도 같은 <strong>더보기</strong> 패널에 있습니다).</p>
   <div class="tablewrap"><table>
-    <tr><th>더보기 패널 항목</th><th>이번 실습에서 설정할 값</th></tr>
-    <tr><td>모델</td><td>기본값 유지 (분류·요약 위주라 Flash로 충분)</td></tr>
-    <tr><td>출력</td><td><strong>구조화된 출력</strong> 선택</td></tr>
-    <tr><td>연필 아이콘 → 필드 편집</td><td>5-2 스키마의 필드를 등록: <code>collected_at</code> · <code>total_count</code> · <code>by_response_level</code> · <code>items</code></td></tr>
+    <tr><th>#</th><th>노드</th><th>유형</th><th>이 단계에서 배우는 기능</th></tr>
+    <tr><td>1</td><td>수동 트리거</td><td>트리거</td><td>입력 필드 정의</td></tr>
+    <tr><td>2</td><td><code>news_router</code></td><td>Gemini Agent</td><td>구조화된 출력 · 도구 선택</td></tr>
+    <tr><td>3</td><td><code>URGENT_CHECK</code></td><td>조건</td><td>흐름 제어 · If/Else 분기</td></tr>
+    <tr><td>4</td><td><code>alert_draft</code> (If)</td><td>Gemini Agent</td><td>변수 칩 · 도구 비활성화 · HITL</td></tr>
+    <tr><td>5</td><td><code>daily_log</code> (Else)</td><td>Gemini Agent</td><td>브랜치별 다른 처리</td></tr>
   </table></div>
-  <p><strong>UI 폼이 표현하지 못하는 부분은 지시문으로 보완합니다.</strong> 필드 편집기가 배열 안 객체(<code>items</code> 내부의
-  <code>outlet</code>·<code>stance</code> 등)나 enum까지 지정할 수 있는지 실습 중에 직접 확인하고,
-  <strong>지정할 수 없는 규칙은 아래 지시문 템플릿의 <code>## Constraints</code>에 글로 적어둡니다</strong> —
-  구조는 패널이, 값의 제약은 지시문이 담당하는 이중 방어입니다.</p>
-  <div class="copyblock"><div class="cb-label"><span>INSTRUCTIONS 템플릿 · 구조화된 출력과 함께 사용</span><button data-copy>복사</button></div>
-  <pre><code>## Purpose
-경쟁 매체의 보도를 매일 수집해 구조화된 모니터링 리포트를 만든다.
+  <p>노드는 5개뿐이지만, 실제 기업 구축 사례에서 쓰이는 구조와 동일합니다 — <strong>Router가 판정하고, 조건이 갈라주고, 브랜치마다 다르게 처리</strong>하는 형태입니다.
+  시나리오가 늘어도 에이전트를 새로 만들지 않고 Router의 예시 목록만 보강하면 됩니다.</p>
 
-## Step-by-Step Behaviour
-1. 최근 24시간 내 타사 보도·보도자료를 수집한다
-2. 각 건의 주제·논조·대응 필요도를 판정한다
-3. 노드에 설정된 구조화된 출력 형식에 맞춰 결과를 채운다
-4. 그 결과를 사람이 읽을 마크다운 표로 변환해 함께 제시한다
-
-## Constraints
-- 지정된 출력 필드 외에 임의의 필드를 추가하지 말 것
-- topic은 보도·시사 / 편성·콘텐츠 / 경영·인사 / 기술·플랫폼 / 기타 중 하나만
-- stance는 긍정 / 중립 / 부정 중 하나만
-- response_level은 높음 / 보통 / 낮음 중 하나만
-- by_response_level의 합은 total_count와 반드시 일치할 것
-- 확인되지 않은 내용을 추측해 채우지 말 것
-
-## Example
-{"collected_at":"2026-03-04 08:45","total_count":3,
- "by_response_level":{"높음":2,"보통":1,"낮음":0},
- "items":[
-  {"outlet":"○○일보","title":"...","url":"https://...","published_at":"2026-03-04 07:10",
-   "topic":"편성·콘텐츠","stance":"부정","summary":"...",
-   "response_level":"높음","suggested_action":"홍보팀 확인 요청"},
-  {"outlet":"△△방송","title":"...","url":"https://...","published_at":"2026-03-04 06:40",
-   "topic":"경영·인사","stance":"중립","summary":"...",
-   "response_level":"높음","suggested_action":"경영지원국 공유"},
-  {"outlet":"□□뉴스","title":"...","url":"https://...","published_at":"2026-03-03 22:15",
-   "topic":"기술·플랫폼","stance":"긍정","summary":"...",
-   "response_level":"보통","suggested_action":"조치 불필요"}]}</code></pre></div>
-  <p><code>## Example</code>은 반드시 넣습니다 — 필드 정의만으로는 모델이 enum을 흘리는 경우가 있는데,
-  값이 채워진 예시가 있으면 준수율이 눈에 띄게 올라갑니다. 예시를 만들 때 두 가지를 지키세요 —
-  <strong>enum 값을 골고루 등장</strong>시키고(위 예시는 stance의 부정·중립·긍정을 모두 보여줍니다),
-  <strong><code>total_count</code> · <code>by_response_level</code> 합계 · <code>items</code> 개수를 반드시 일치</strong>시킵니다.
-  예시에서 어긋나 있으면 모델이 그 어긋남까지 따라 합니다.</p>
-
-  <h4>5-3. 워크플로 생성 — 구조화된 출력 설정 (10분)</h4>
+  <h4>5-1. 트리거와 입력 필드 (7분)</h4>
   <ol>
-    <li>탐색 메뉴 <strong>Agents</strong> → <strong>+ Create agent</strong> → 5-1에서 만든 프롬프트를 붙여넣어 초안 생성 → 빌더의 <strong>Flow</strong> 탭으로 이동</li>
-    <li>자동 생성된 <strong>작업 단계</strong>를 확인합니다: 보도 수집 → 분류·논조 판정 → <strong>구조화된 결과 생성</strong> → 마크다운 표로 변환</li>
-    <li>분류·판정을 담당하는 노드를 클릭 → <strong>더보기</strong> 펼치기 → <strong>출력</strong>을 <strong>구조화된 출력</strong>으로 변경</li>
-    <li><strong>연필 아이콘</strong>으로 필드 편집기를 열어 5-2의 필드를 등록합니다 — 각 필드의 <strong>설명(description)</strong>을 성의 있게 적을수록 모델이 무엇을 채워야 하는지 정확히 이해합니다</li>
-    <li>노드의 <strong>지시문</strong>에 5-2 템플릿을 붙여넣어, 폼으로 표현하지 못한 enum·합계 규칙을 <code>## Constraints</code>로 보강합니다</li>
-    <li>빠진 규칙은 직접 수정합니다 — <strong>비주얼 에디터(노드 패널)와 채팅 에디터</strong> 둘 다 써봅니다</li>
+    <li>좌측 메뉴 <strong>+ 새 에이전트 → 워크플로 → 직접 만들기</strong>를 선택합니다</li>
+    <li>캔버스에 기본 배치된 <strong>수동(Manual) 트리거</strong>를 그대로 사용합니다 — 스케줄은 5-6에서 바꿔 답니다</li>
+    <li>트리거 노드 클릭 → 우측 <strong>입력란</strong> 섹션 → <strong>+ 필드 추가</strong></li>
   </ol>
+  <div class="tablewrap"><table>
+    <tr><th>필드명</th><th>타입</th><th>필수</th><th>설명</th></tr>
+    <tr><td><code>keyword</code></td><td>텍스트</td><td>필수</td><td>모니터링할 키워드 (예: 우리 프로그램명, 편성 개편, 수신료)</td></tr>
+  </table></div>
+  <p>이 필드는 실행할 때 사용자에게 입력창으로 표시되고, 이후 모든 노드에서 <code>수동: keyword</code> 변수로 참조합니다.
+  <strong>트리거는 플로우당 1개</strong>입니다 — 수동과 스케줄을 함께 둘 수 없으니, 둘 다 필요하면 워크플로를 나눕니다.</p>
 
-  <h4>5-4. 트리거 설정 — 스케줄링 (8분)</h4>
+  <h4>5-2. news_router 노드 — 구조화된 출력으로 판정시키기 (13분)</h4>
+  <p>워크플로의 핵심 노드입니다. 보도를 훑어 <strong>경로를 결정</strong>하고, 동시에 분류·요약까지 구조화해 내보냅니다.</p>
   <ol>
-    <li>트리거를 <strong>평일 오전 8시 50분</strong> 스케줄로 설정합니다 (보도국 아침 회의 전 리포트 도착)</li>
-    <li>트리거 종류를 살펴봅니다: 스케줄 외에 채팅·이메일·커넥터 이벤트로도 실행 가능함을 확인</li>
+    <li>트리거 아래 <strong>+</strong> → <strong>Gemini Agent</strong> 추가, 이름 <code>news_router</code></li>
+    <li>노드 설정 → <strong>더보기</strong> 펼치기 → <strong>모델</strong>은 기본값(Flash)으로 충분합니다</li>
+    <li>연결된 앱은 <strong>Google Search만 켜고 나머지는 끕니다</strong> (아래 경고 참조)</li>
+    <li><strong>출력</strong>을 <strong>구조화된 출력</strong>으로 바꾸고, <strong>연필 아이콘</strong>으로 아래 4필드를 등록합니다</li>
+  </ol>
+  <div class="tablewrap"><table>
+    <tr><th>필드명</th><th>타입</th><th>필수</th><th>용도</th></tr>
+    <tr><td><code>branch</code></td><td>텍스트</td><td><strong>필수</strong></td><td><code>URGENT</code> 또는 <code>ROUTINE</code> — 조건 분기의 판정 기준</td></tr>
+    <tr><td><code>topic</code></td><td>텍스트</td><td>선택</td><td>보도·시사 / 편성·콘텐츠 / 경영·인사 / 기술·플랫폼 / 기타</td></tr>
+    <tr><td><code>summary</code></td><td>텍스트</td><td>선택</td><td>2문장 이내 요약</td></tr>
+    <tr><td><code>check_point</code></td><td>텍스트</td><td>선택</td><td>사실 확인이 필요한 항목. ROUTINE이면 빈 값</td></tr>
+  </table></div>
+  <p><strong><code>branch</code>만 필수로 지정합니다.</strong> 전부 필수로 두면 ROUTINE 건에도 모델이 <code>check_point</code>를 억지로 만들어내
+  출력 토큰과 응답 시간이 함께 늘어납니다. 각 필드의 <strong>설명(description)</strong>은 성의 있게 적으세요 — 모델이 무엇을 채울지 여기서 읽습니다.</p>
+  <div class="copyblock"><div class="cb-label"><span>news_router · 요청 사항</span><button data-copy>복사</button></div>
+  <pre><code>입력된 키워드에 대한 최근 24시간 타사 보도를 확인하고
+처리 경로를 결정하라. 각 필드는 3문장 이내.
+
+URGENT: 사실관계 정정·반론이 필요하거나, 우리 편성·인사·경영에
+        직접 영향을 주는 보도
+ROUTINE: 업계 동향·단순 소개·이미 알려진 사실의 재보도
+
+판정 보조 규칙:
+- 우리 조직명이 제목에 등장하고 논조가 부정이면 URGENT
+- 경쟁사 자체 소식만 다루면 ROUTINE
+- 애매하면 ROUTINE으로 두고 check_point에 판단 근거를 적는다
+
+예시:
+- "○○ 프로그램 폐지설 보도" -> URGENT
+- "타사 신규 예능 편성 발표" -> ROUTINE
+- "수신료 관련 국회 논의 보도" -> URGENT
+- "업계 연말 시상식 일정 안내" -> ROUTINE
+
+모니터링 키워드: [수동: keyword]</code></pre></div>
+  <p>마지막 줄의 대괄호는 <strong>입력창 우측 하단 <code>+</code> 버튼으로 삽입한 변수 칩</strong>입니다 — 글자로 타이핑하는 것이 아닙니다.
+  (<code>&lt;/&gt;</code>는 코드 삽입 버튼이니 구분하세요.)</p>
+  <div class="warn"><b>쓰지 않는 도구는 반드시 끄세요</b>
+  Drive 도구를 켜면 제한된 Knowledge 설정보다 우선 적용되어 무제한 검색 권한이 부여되는 알려진 동작이 있습니다.
+  또한 켜둔 검색 도구는 원문 페이로드를 결과에 함께 실어, <strong>최종 답변이 엉뚱한 웹 검색 요약으로 대체되는 사고</strong>의 원인이 됩니다.
+  경로별로 필요한 도구만 켜는 것이 원칙입니다.</div>
+
+  <h4>5-3. 조건 분기 — 길 가르기 (8분)</h4>
+  <ol>
+    <li><code>news_router</code> 아래 <strong>+</strong> → <strong>흐름 제어 → 조건</strong> 추가, 이름 <code>URGENT_CHECK</code></li>
+    <li>변수는 <strong><code>news_router: branch</code></strong>, 연산자는 <strong>같음(equals)</strong>, 값은 <strong><code>URGENT</code></strong></li>
+    <li>분기가 <strong>If</strong>(= URGENT)와 <strong>Else</strong>(= ROUTINE) 두 갈래로 생기는 것을 확인합니다</li>
+  </ol>
+  <p>조건 값은 모델이 출력하는 문자열과 <strong>대소문자·언더스코어까지 정확히 일치</strong>해야 합니다.
+  <code>urgent</code>나 <code>긴급</code>으로 적으면 항상 Else로만 흐르는데, 오류 메시지가 뜨지 않아 찾기 어려운 종류의 실수입니다.</p>
+
+  <h4>5-4. 브랜치별 노드와 변수 칩 (12분)</h4>
+  <p><strong>If 브랜치 — <code>alert_draft</code></strong> (Gemini Agent, <strong>Google Search 끔</strong>, 출력 텍스트)</p>
+  <div class="copyblock"><div class="cb-label"><span>alert_draft · 요청 사항</span><button data-copy>복사</button></div>
+  <pre><code>아래 보도 요약을 보도국 공유용 알림으로 정리하라.
+
+[최우선 규칙 - 반드시 준수]
+아래 3개 섹션만 작성하고 다른 섹션은 만들지 않는다. 전체 800자 이내.
+1) 무슨 보도인가 - 2문장 이내
+2) 왜 긴급인가 - 2문장 이내
+3) 확인이 필요한 사항 - 최대 3개, 각 1문장
+
+추측하거나 확인되지 않은 내용은 쓰지 않는다.
+
+분류: [news_router: topic]
+요약: [news_router: summary]
+확인 필요 항목: [news_router: check_point]
+모니터링 키워드: [수동: keyword]</code></pre></div>
+  <p><strong>Else 브랜치 — <code>daily_log</code></strong> (Gemini Agent, <strong>Google Search 끔</strong>, 출력 텍스트):
+  <code>[news_router: topic]</code>과 <code>[news_router: summary]</code> 두 칩만 꽂아 <strong>한 줄 로그</strong>로 남기게 합니다
+  (예: <code>분류 | 요약 | 조치 불필요</code>). 같은 판정 결과라도 <strong>브랜치마다 처리 강도가 다르다</strong>는 것이 이 단계의 요점입니다.</p>
+  <div class="warn"><b>출력 분량은 반드시 제한하세요</b>
+  제한이 없으면 에이전트가 조회한 내용을 전부 서술하려 들어 응답이 수만 자로 불어나고, 잘려나간 조각이 엉뚱하게 해석되는 사고로 이어집니다.
+  "3섹션 고정 · N자 이내"처럼 <strong>골격을 지정</strong>하는 방식이 "간결하게 써줘"보다 훨씬 잘 먹힙니다.</div>
+
+  <h4>5-5. HITL 노드 — 사람의 승인 넣기 (8분)</h4>
+  <p><code>alert_draft</code> 뒤에 "이 알림을 보도국 공유 채널로 발송할까요?"라고 <strong>사용자 확인을 요청</strong>하는 단계를 넣고,
+  승인했을 때만 발송하도록 연결합니다. 수집·분류·요약(저위험)은 자동, <strong>외부로 나가는 발송은 사람 승인 후</strong>라는
+  HITL 원칙(7.6장)의 구현입니다. 긴급 여부와 논조는 <strong>모델의 판단</strong>이므로, 공유 전에 사람이 한 번 봐야 합니다.
+  Else 브랜치(<code>daily_log</code>)에는 승인을 걸지 않습니다 — <strong>위험이 없는 경로까지 사람을 부르면 아무도 승인 버튼을 안 누르게 됩니다.</strong></p>
+
+  <h4>5-6. 테스트 · 버전 · 스케줄 전환 (12분)</h4>
+  <ol>
+    <li>구성이 끝나면 먼저 <strong>버전 저장</strong> — 이후 실험의 기준점이 됩니다 (저장·비교·복원 가능)</li>
+    <li><strong>테스트 탭</strong>에서 URGENT용·ROUTINE용 질문을 각각 실행합니다 — 채팅으로 부르면 상위 어시스턴트가 결과를 다시 요약해버려 워크플로 자체의 품질을 판정하기 어렵습니다</li>
+    <li>확인 순서: <strong>①</strong> <code>branch</code>가 의도한 값으로 나왔는가 <strong>②</strong> 구조화된 출력 4필드가 규칙대로 채워졌는가 <strong>③</strong> 분기가 맞게 탔는가 <strong>④</strong> 출력이 지정한 분량·섹션을 지켰는가</li>
+    <li>미흡하면 지시문을 고쳐 재실행합니다 (최소 1회 수정 사이클) — 판정이 틀렸으면 <strong>예시를 늘리는 것</strong>이 규칙을 늘리는 것보다 효과적입니다</li>
+    <li><strong>실행(Runs) 탭</strong>에서 노드별 소요 시간과 실행 이력을 확인합니다 — 운영 시 문제 추적 지점</li>
+    <li>마지막으로 트리거를 <strong>평일 오전 8시 50분 스케줄</strong>로 바꿔 답니다 (보도국 아침 회의 전 도착)</li>
   </ol>
   <div class="warn"><b>운영 함정</b>
   스케줄은 <strong>14일마다 수동으로 갱신</strong>하지 않으면 실행이 중단됩니다. 만들어 두고 잊으면 어느 날 조용히 리포트가 오지 않습니다 — 갱신 주기를 담당자 캘린더에 걸어두세요.</div>
 
-  <h4>5-5. HITL 노드 — 사람의 승인 넣기 (10분)</h4>
-  <p>리포트 마지막에 "<strong>대응 필요도 '높음'</strong> 항목을 보도국 공유 채널에 발송할까요?"라고 <strong>사용자에게 확인을 요청</strong>하고,
-  승인했을 때만 발송하도록 단계를 추가합니다. — 수집·분류·요약(저위험)은 자동, <strong>외부로 나가는 발송은 사람 승인 후</strong>라는
-  HITL 원칙(7.6장)을 워크플로에 직접 구현하는 단계입니다. 논조·대응 필요도는 <strong>모델의 판단</strong>이므로, 공유 전에 사람이 한 번 봐야 합니다.</p>
-
-  <h4>5-6. 테스트와 모니터링 (10분)</h4>
-  <ol>
-    <li>스케줄을 기다리지 말고 <strong>수동 실행</strong>으로 즉시 테스트합니다</li>
-    <li><strong>스키마 준수 여부</strong>를 먼저 봅니다: 필수 필드 누락, enum 밖의 값(예: stance가 "다소 부정"), 건수 합계 불일치 → 발견되면 지시문 수정 후 재실행 (최소 1회 수정 사이클)</li>
-    <li><strong>Activity details</strong>에서 실행 이력·각 단계의 동작을 확인합니다 — 운영 시 문제 추적 지점</li>
-  </ol>
-
   <ul class="check">
-    <li>Meta Prompting으로 에이전트 프롬프트 생성</li>
-    <li>JSON 출력 스키마 설계 + 노드에 구조화된 출력 설정</li>
-    <li>자동 생성된 단계·지시문 검토 및 1회 이상 수정</li>
-    <li>스케줄 트리거 설정 완료</li>
-    <li>HITL 확인 단계 추가 완료</li>
-    <li>수동 실행 테스트 + 스키마 준수 확인 + Activity details 확인</li>
+    <li>수동 트리거에 입력 필드 <code>keyword</code> 정의</li>
+    <li><code>news_router</code>에 구조화된 출력 4필드 설정 (<code>branch</code>만 필수)</li>
+    <li>불필요한 도구 비활성화 확인</li>
+    <li>조건 노드로 If/Else 분기 구성</li>
+    <li>변수 칩으로 노드 간 값 전달 (텍스트 타이핑 아님)</li>
+    <li>HITL 승인 단계 추가 (If 브랜치에만)</li>
+    <li>버전 저장 + 테스트 탭 양쪽 경로 실행 + Runs 확인</li>
+    <li>스케줄 트리거로 전환</li>
   </ul>
-  <p><strong>개인 과제</strong>: "정해진 시간마다 반복하는" 본인 업무 1개를 워크플로로 제작 (예: 주간 보고 초안, 시청자 의견 일일 집계, 게시판 모니터링 요약).
-  조건: 트리거 + HITL 단계 각 1개 이상, 그리고 <strong>enum이 최소 1개 들어간 출력 스키마</strong> 포함.</p>
+  <p><strong>개인 과제</strong>: "판단해서 갈라지는" 본인 업무 1개를 워크플로로 제작
+  (예: 시청자 의견 → 단순 문의 / 민원, 사내 공지 → 조치 필요 / 참고, 제보 → 취재 검토 / 보관).
+  조건: <strong>구조화된 출력 + 조건 분기 + HITL</strong> 각 1개 이상 포함.</p>
   <ul class="check">
-    <li>정기 반복 업무 1개 선정</li>
-    <li>출력 스키마 정의 (구조화된 출력 설정 + enum 규칙 1개 이상)</li>
-    <li>스케줄(또는 이벤트) 트리거 설정</li>
-    <li>HITL(사람 승인) 단계 1개 이상 포함</li>
-    <li>수동 실행 테스트 + Activity details 확인</li>
+    <li>갈라지는 업무 1개 선정 (분기 기준을 한 문장으로 쓸 수 있어야 함)</li>
+    <li>Router 노드의 출력 필드 설계 (판정 필드 1개는 필수 지정)</li>
+    <li>조건 분기 + 브랜치별 처리 차등화</li>
+    <li>위험한 쪽 경로에만 HITL 배치</li>
+    <li>테스트 탭에서 양쪽 경로 각 1회 이상 실행</li>
   </ul>
-  <p><strong>막힐 때</strong>: 단계가 이상하게 생성됨 → 5-1 프롬프트에 작업 순서를 명시 ·
-  출력이 자유 문장으로 나옴 → 노드의 <strong>더보기 → 출력</strong>이 <strong>구조화된 출력</strong>으로 설정됐는지 확인 ·
-  필드가 비어서 나옴 → 필드 편집기의 <strong>설명(description)</strong>을 구체적으로 다시 작성 ·
-  enum 밖의 값이 나옴 → 지시문에 <code>## Example</code>을 추가하거나 허용값을 <code>## Constraints</code>에 한 번 더 나열 ·
-  수집 결과가 비어 있음 → 검색 범위(기간·매체)를 지시문에 구체적으로 지정 ·
-  발송이 바로 실행됨 → HITL 단계가 발송 단계 앞에 있는지 순서 확인.</p>
+  <p><strong>막힐 때</strong>: 항상 한쪽 브랜치로만 흐름 → 조건 값의 <strong>철자·대소문자</strong>가 모델 출력과 정확히 같은지 확인 ·
+  변수 칩이 빈 값 → 다른 브랜치의 노드를 참조하고 있지 않은지 확인(브랜치는 하나만 실행됩니다) ·
+  출력이 자유 문장으로 나옴 → <strong>더보기 → 출력</strong>이 <strong>구조화된 출력</strong>인지 확인 ·
+  필드가 비어서 나옴 → 필드 <strong>설명(description)</strong>을 구체적으로 다시 작성 ·
+  답변이 엉뚱한 웹 정보로 채워짐 → 그 노드의 <strong>검색 도구를 끄고</strong> 재실행 ·
+  응답이 너무 길거나 잘림 → 섹션 골격과 글자 수 상한을 지시문에 명시 ·
+  판정이 자주 틀림 → 규칙을 늘리기보다 <strong>예시를 2~3건 추가</strong> ·
+  발송이 바로 실행됨 → HITL 단계가 발송 단계 <strong>앞</strong>에 있는지 순서 확인.</p>
 </div>
 
 <section id="s8">
