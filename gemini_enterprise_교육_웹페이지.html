@@ -1173,13 +1173,23 @@ subtitle_agent = Agent(
 - 확인되지 않은 내용을 추측해 채우지 말 것
 
 ## Example
-{"collected_at":"2026-03-04 08:45","total_count":2,
- "by_response_level":{"높음":1,"보통":1,"낮음":0},
- "items":[{"outlet":"○○일보","title":"...","url":"https://...",
- "published_at":"2026-03-04 07:10","topic":"편성·콘텐츠","stance":"부정",
- "summary":"...","response_level":"높음","suggested_action":"홍보팀 확인 요청"}]}</code></pre></div>
+{"collected_at":"2026-03-04 08:45","total_count":3,
+ "by_response_level":{"높음":2,"보통":1,"낮음":0},
+ "items":[
+  {"outlet":"○○일보","title":"...","url":"https://...","published_at":"2026-03-04 07:10",
+   "topic":"편성·콘텐츠","stance":"부정","summary":"...",
+   "response_level":"높음","suggested_action":"홍보팀 확인 요청"},
+  {"outlet":"△△방송","title":"...","url":"https://...","published_at":"2026-03-04 06:40",
+   "topic":"경영·인사","stance":"중립","summary":"...",
+   "response_level":"높음","suggested_action":"경영지원국 공유"},
+  {"outlet":"□□뉴스","title":"...","url":"https://...","published_at":"2026-03-03 22:15",
+   "topic":"기술·플랫폼","stance":"긍정","summary":"...",
+   "response_level":"보통","suggested_action":"조치 불필요"}]}</code></pre></div>
   <p><code>## Example</code>은 반드시 넣습니다 — 필드 정의만으로는 모델이 enum을 흘리는 경우가 있는데,
-  값이 채워진 예시 1건이 있으면 준수율이 눈에 띄게 올라갑니다.</p>
+  값이 채워진 예시가 있으면 준수율이 눈에 띄게 올라갑니다. 예시를 만들 때 두 가지를 지키세요 —
+  <strong>enum 값을 골고루 등장</strong>시키고(위 예시는 stance의 부정·중립·긍정을 모두 보여줍니다),
+  <strong><code>total_count</code> · <code>by_response_level</code> 합계 · <code>items</code> 개수를 반드시 일치</strong>시킵니다.
+  예시에서 어긋나 있으면 모델이 그 어긋남까지 따라 합니다.</p>
 
   <h4>5-3. 워크플로 생성 — 구조화된 출력 설정 (10분)</h4>
   <ol>
