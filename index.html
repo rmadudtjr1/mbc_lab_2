@@ -1097,7 +1097,7 @@ subtitle_agent = Agent(
 스키마 밖의 필드나 설명 문장은 절대 추가하지 말 것.</code></pre></div>
   <p>생성된 프롬프트를 검토합니다 — 역할(Role)과 출력 기대(Output Expectations)가 갖춰졌는지 확인하고, 마음에 안 드는 부분은 후속 지시로 다듬습니다.</p>
 
-  <h4>5-2. 출력 스키마 정의 — 형식을 고정하기 (10분)</h4>
+  <h4>5-2. 출력 스키마 정의 — 형식을 고정하기 (12분)</h4>
   <p>"표로 예쁘게 써줘"는 매번 결과가 흔들립니다. <strong>JSON 스키마</strong>로 필드·타입·허용값(enum)·필수 항목을 못 박으면
   모델이 그 틀 안에서만 답하게 되어, <strong>매일 실행해도 같은 구조</strong>가 보장됩니다. 아래 스키마를 5-1 프롬프트 끝에 붙여 넣습니다.</p>
   <div class="copyblock"><div class="cb-label"><span>OUTPUT SCHEMA · JSON</span><button data-copy>복사</button></div>
@@ -1140,11 +1140,46 @@ subtitle_agent = Agent(
   <code>stance</code>에 enum이 없으면 어떤 날은 "다소 비판적", 어떤 날은 "부정적"으로 나와 집계가 불가능해집니다 — enum이 그 흔들림을 막습니다.
   마지막에 <strong>사람이 읽을 마크다운 표</strong>는 이 JSON을 변환해서 만들도록 별도 단계로 지시합니다.</p>
 
-  <h4>5-3. 워크플로 생성 (12분)</h4>
+  <p><strong>스키마를 어디에 입력하나</strong> — Agent Designer에는 응답 스키마 전용 입력란이 <strong>없습니다</strong>
+  (공식 문서상 <code>responseSchema</code>는 API로만 지정 가능, 콘솔 미지원). 노코드에서는
+  <strong>지시문(Instructions) 안에 스키마를 직접 써 넣는 것</strong>이 유일한 방법입니다 — 5-3에서 실제로 붙여 넣습니다.
+  지시문은 아래 틀로 구성하고, 스키마는 <code>## Constraints</code>와 <code>## Output Format</code>에 배치합니다.</p>
+  <div class="copyblock"><div class="cb-label"><span>INSTRUCTIONS 템플릿 · 수동 입력용</span><button data-copy>복사</button></div>
+  <pre><code>## Purpose
+경쟁 매체의 보도를 매일 수집해 구조화된 모니터링 리포트를 만든다.
+
+## Step-by-Step Behaviour
+1. 최근 24시간 내 타사 보도·보도자료를 수집한다
+2. 각 건의 주제·논조·대응 필요도를 판정한다
+3. 아래 스키마에 맞는 JSON을 생성한다
+4. 그 JSON을 사람이 읽을 마크다운 표로 변환해 함께 제시한다
+
+## Constraints
+- 스키마에 없는 필드를 추가하지 말 것
+- JSON 앞뒤에 설명 문장이나 코드펜스를 붙이지 말 것
+- enum이 지정된 필드는 나열된 값 중 하나만 사용할 것
+- 확인되지 않은 내용을 추측해 채우지 말 것
+
+## Output Format
+아래 JSON 스키마를 그대로 따르는 JSON 객체 하나를 출력한다.
+{ ...(5-2의 스키마 전문을 여기에 붙여넣기)... }
+
+## Example
+{"collected_at":"2026-03-04 08:45","total_count":2,
+ "by_response_level":{"높음":1,"보통":1,"낮음":0},
+ "items":[{"outlet":"○○일보","title":"...","url":"https://...",
+ "published_at":"2026-03-04 07:10","topic":"편성·콘텐츠","stance":"부정",
+ "summary":"...","response_level":"높음","suggested_action":"홍보팀 확인 요청"}]}</code></pre></div>
+  <p><code>## Example</code>은 반드시 넣습니다 — 스키마 텍스트만으로는 모델이 enum을 흘리는 경우가 있는데,
+  값이 채워진 예시 1건이 있으면 준수율이 눈에 띄게 올라갑니다.</p>
+
+  <h4>5-3. 워크플로 생성 — 지시문에 스키마 넣기 (10분)</h4>
   <ol>
-    <li>Agent Designer → 새 에이전트 만들기 → 5-1·5-2에서 만든 프롬프트와 스키마를 붙여넣습니다</li>
+    <li>탐색 메뉴 <strong>Agents</strong> → <strong>+ Create agent</strong> → 5-1에서 만든 프롬프트를 붙여넣어 초안 생성 → <strong>Proceed to Builder</strong> → <strong>Flow</strong> 탭</li>
+    <li>캔버스에서 <strong>메인 에이전트 노드를 클릭</strong>하면 설정 패널이 열립니다 — Agent Name · Model Selection · Goal · <strong>Instructions</strong></li>
+    <li><strong>Instructions 필드에 5-2의 템플릿을 붙여넣고</strong>, <code>## Output Format</code> 자리에 스키마 전문을 채웁니다 (수동 입력은 이 한 곳에서 끝납니다)</li>
     <li>자동 생성된 <strong>작업 단계</strong>를 확인합니다: 보도 수집 → 분류·논조 판정 → <strong>JSON 생성</strong> → 마크다운 표로 변환</li>
-    <li>생성된 지시문(Role · Output Expectations)을 열어 요청 사항이 반영됐는지 검토하고, 빠진 규칙은 직접 수정합니다 — <strong>비주얼 에디터와 채팅 에디터</strong> 둘 다 써봅니다</li>
+    <li>빠진 규칙은 직접 수정합니다 — <strong>비주얼 에디터(노드 패널)와 채팅 에디터</strong> 둘 다 써봅니다</li>
   </ol>
 
   <h4>5-4. 트리거 설정 — 스케줄링 (8분)</h4>
@@ -1152,6 +1187,8 @@ subtitle_agent = Agent(
     <li>트리거를 <strong>평일 오전 8시 50분</strong> 스케줄로 설정합니다 (보도국 아침 회의 전 리포트 도착)</li>
     <li>트리거 종류를 살펴봅니다: 스케줄 외에 채팅·이메일·커넥터 이벤트로도 실행 가능함을 확인</li>
   </ol>
+  <div class="warn"><b>운영 함정</b>
+  스케줄은 <strong>14일마다 수동으로 갱신</strong>하지 않으면 실행이 중단됩니다. 만들어 두고 잊으면 어느 날 조용히 리포트가 오지 않습니다 — 갱신 주기를 담당자 캘린더에 걸어두세요.</div>
 
   <h4>5-5. HITL 노드 — 사람의 승인 넣기 (10분)</h4>
   <p>리포트 마지막에 "<strong>대응 필요도 '높음'</strong> 항목을 보도국 공유 채널에 발송할까요?"라고 <strong>사용자에게 확인을 요청</strong>하고,
@@ -1184,7 +1221,7 @@ subtitle_agent = Agent(
   </ul>
   <p><strong>막힐 때</strong>: 단계가 이상하게 생성됨 → 5-1 프롬프트에 작업 순서를 명시 ·
   JSON 앞뒤에 설명 문장이 붙음 → "스키마 외 텍스트 금지"를 지시문에 다시 명시 ·
-  enum 밖의 값이 나옴 → 해당 필드의 허용값을 지시문 본문에도 한 번 더 나열 ·
+  enum 밖의 값이 나옴 → 지시문에 <code>## Example</code>을 추가하거나 허용값을 <code>## Constraints</code>에 한 번 더 나열 ·
   수집 결과가 비어 있음 → 검색 범위(기간·매체)를 지시문에 구체적으로 지정 ·
   발송이 바로 실행됨 → HITL 단계가 발송 단계 앞에 있는지 순서 확인.</p>
 </div>
